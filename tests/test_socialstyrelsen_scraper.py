@@ -43,6 +43,7 @@ class TestSocialstyrelsen(TestCase):
         })
         assert res.pandas.shape[0] == 6
 
+        # Test * query
         res = ds.fetch({
             "TABELL": "1",
             "OMR": "*",
@@ -51,6 +52,24 @@ class TestSocialstyrelsen(TestCase):
             "MATT": "1",
         })
         assert res.pandas.shape[0] == 312
+
+
+    def test_query_utrikes_hushall(self):
+        """This query requires us to rename dimensions in payload
+        """
+        dataset = self.scraper["ekonomisktbistandmanad"]
+        query = {
+            "TABELL": "1", # "Biståndshushåll"
+            "MATT": [
+                "2",  # "Utbetalt ekonomiskt bistånd tkr",
+            ],
+            "OMR": "*",  # All regions
+            "AR": "*",
+            "MANAD": "*",
+            "UTRIKES_HUSH": "*"
+        }
+        df = dataset.fetch(query).pandas
+        assert "UTRIKES_HUSH" in df.columns
 
 
     def test_bad_queries(self):

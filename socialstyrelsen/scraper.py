@@ -232,12 +232,21 @@ class SocialstyrelsenDimension(Dimension):
 
     @property
     def query_key(self):
-        if self.elem_type == "checkbox_list":
-            key = "hv{}".format(self.id)
-        else:
-            key = "v{}".format(self.id)
+        key = self.id
+        # In some cases we need to use a different dimension key in the post
+        # payload than in the form.
+        TRANSLATE_DIMS = {
+            "UTRIKES_HUSH": "UTRIKES"  # "dim_key" : "payload_key"
+        }
+        if key in TRANSLATE_DIMS:
+            key = TRANSLATE_DIMS[key]
 
-        return key
+        if self.elem_type == "checkbox_list":
+            query_key = "hv{}".format(key)
+        else:
+            query_key = "v{}".format(key)
+
+        return query_key
 
 
 class SocialstyrelsenDimensionValue(DimensionValue):
@@ -287,6 +296,19 @@ def parse_result_table(html):
         col_index_elems = soup.select("#ph1_ListBoxKolumner option")
         assert len(col_index_elems) > 0, "Column selector missing on result page"
         col_index = [x.get("value") for x in col_index_elems]  # ['AR', 'MANAD']
+
+    # Hackish: Translate the dimension keys used in row/column selector
+    # Struggling to see why to naming of dimensions differ accross the site
+    def translate_dim(dim_key):
+        DIM_TRANSLATIONS = {
+            "UTR": "UTRIKES_HUSH"
+        }
+        if dim_key in DIM_TRANSLATIONS:
+            return DIM_TRANSLATIONS[dim_key]
+        else:
+            return dim_key
+    col_index = [translate_dim(x) for x in col_index]
+    row_index = [translate_dim(x) for x in row_index]
 
     # Get html table
     table = soup.select_one("#ph1_pnlTabellResultat table")
