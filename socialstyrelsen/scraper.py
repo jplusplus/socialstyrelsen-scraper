@@ -8,18 +8,19 @@ from statscraper import (BaseScraper, Collection, DimensionValue,
 from statscraper.exceptions import NoSuchItem
 from socialstyrelsen.exceptions import InvalidQuery, TooLargeQuery
 
-BASE_URL = u"http://sdb.socialstyrelsen.se/"
+BASE_URL = "http://sdb.socialstyrelsen.se/"
 
 
 class SocialstyrelsenScraper(BaseScraper):
 
     def _fetch_itemslist(self, current_item):
-        url = "http://www.socialstyrelsen.se/statistik/statistikdatabas/"
+        url = "https://www.socialstyrelsen.se/statistik-och-data/statistik/statistikdatabasen/"
         # Get start page
         html = self._get_html(url)
         soup = BeautifulSoup(html, 'html.parser')
-        for a_tag in soup.select("a[href*=/statistik/statistikdatabas]"):
-            id_ = a_tag.get("href").replace("/statistik/statistikdatabas/", "")
+        for a_tag in soup.select("a[href*=https://sdb.socialstyrelsen.se/]"):
+            id_ = a_tag.get("href").replace("https://sdb.socialstyrelsen.se/", "")
+            id_ = id_.replace("/val.aspx", "")
             label = a_tag.text.strip()
             if "default.aspx" in id_:
                 # catch link to index page
@@ -29,38 +30,36 @@ class SocialstyrelsenScraper(BaseScraper):
 
     def _fetch_dimensions(self, dataset):
         soup = dataset.soup
-        for elem in soup.select(".dia_valj_ram"):
-            dim_elem = elem.select_one(".fontText")
-            #label = dim_elem.text.strip()
-            id_ = dim_elem.select_one("span").get("id").split("_")[2].upper() # "ph1_Val_dia_lblRubrikVal"
-            dim = SocialstyrelsenDimension(id_.upper())#, label=label
-            dim.elem = elem
-            yield dim
-
-        for elem in soup.select("select"):
+        selects = soup.find_all("select")
+        for elem in selects:
             id_ = elem.get("name")
             dim = SocialstyrelsenDimension(id_)
             dim.elem = elem
             yield dim
-
+        region = SocialstyrelsenDimension("hvOMR")
+        region.elem = soup.find("div", {'id': "panelOMR"})
+        yield region
 
     def _fetch_allowed_values(self, dimension):
         soup = dimension.elem
-        if dimension.elem_type == "checkbox_list":
-            for a_tag in soup.select("a[href*=cc]"):
-                # u"javascript:cc('i_00_1')" => "00"
-                value = a_tag.get("href").split("_")[1]
-                label = a_tag.text.strip()
-                dim_value = SocialstyrelsenDimensionValue(value, dimension, label)
-                yield dim_value
 
-        elif dimension.elem_type == "select":
+        if dimension.elem_type == "select":
             for option_tag in soup.select("option"):
                 value = option_tag.get("value")
                 label = option_tag.text.strip()
                 dim_value = SocialstyrelsenDimensionValue(value, dimension, label)
                 yield dim_value
-
+        
+        else:
+            # This is the hvOMR (region) dimension
+            for a_tag in soup.select("a[href*=cc]"):
+                # u"javascript:cc('i_00_1')" => "00"
+                print(a_tag)
+                value = a_tag.attrs["href"].split("_")[1]
+                label = a_tag.text.strip()
+                print(value, label)
+                dim_value = SocialstyrelsenDimensionValue(value, dimension, label)
+                yield dim_value
 
 
 
@@ -135,7 +134,7 @@ class SocialstyrelsenScraper(BaseScraper):
     def _get_html(self, url):
         """ Get html from url
         """
-        self.log.info(u"/GET {}".format(url))
+        self.log.info("/GET {}".format(url))
         r = requests.get(url)
         if hasattr(r, 'from_cache'):
             if r.from_cache:
@@ -146,11 +145,11 @@ class SocialstyrelsenScraper(BaseScraper):
         return r.content
 
     def _post_html(self, url, payload):
-        self.log.info(u"/POST {} with {}".format(url, payload))
+        self.log.info("/POST {} with {}".format(url, payload))
         r = requests.post(url, payload)
         r.raise_for_status()
 
-        return r.content
+        return r.text
 
 
     @property
@@ -167,14 +166,9 @@ class SocialstyrelsenDataset(Dataset):
 
     @property
     def url(self):
-        """The query ui is embeded in an iframe. Get the url of that iframe.
-        """
         if not hasattr(self, "_url"):
-            wrapper_url = "http://www.socialstyrelsen.se/statistik/statistikdatabas/{}".format(self.id)
-            html = self.scraper._get_html(wrapper_url)
-            soup = BeautifulSoup(html, 'html.parser')
-            self._url = soup.select_one("iframe").get("src")
-
+            base_url = "https://sdb.socialstyrelsen.se/{}/val.aspx"
+            self._url = base_url.format(self.id)
         return self._url
 
     @property
@@ -205,30 +199,16 @@ class SocialstyrelsenDimension(Dimension):
 
     @property
     def elem_type(self):
-        """There are two kinds of dimension elements in the ui:
-        1) Checkboxlist (often used for regions)
-        2) Basic selects (used most commonly)
-
-        :returns: "checkbox_list" | "select"
-        """
-        if self.elem.get("class") and "dia_valj_ram" in self.elem.get("class"):
-            elem_type = "checkbox_list"
-        elif self.elem.name == "select":
-            elem_type = "select"
-        else:
-            raise Exception("Unknown elem type: {}".format(self.elem))
-
+        elem_type = self.elem.name
         return elem_type
 
     @property
     def is_multivalue(self):
         """Can we use multiple values in query on this dimension?"""
-        if self.elem_type == "checkbox_list":
-            return True
-        elif self.elem_type == "select":
+        if self.elem_type == "select":
             return self.elem.get("multiple")
         else:
-            raise Exception("Unknown elem type: {}".format(self.elem))
+            return True
 
     @property
     def query_key(self):
@@ -241,10 +221,10 @@ class SocialstyrelsenDimension(Dimension):
         if key in TRANSLATE_DIMS:
             key = TRANSLATE_DIMS[key]
 
-        if self.elem_type == "checkbox_list":
-            query_key = "hv{}".format(key)
+        if key != "hvOMR":
+            query_key = "v" + key
         else:
-            query_key = "v{}".format(key)
+            query_key = key
 
         return query_key
 
@@ -389,7 +369,7 @@ def parse_cell_value(val):
     if val in missing_codes.keys():
         return None, missing_codes[val]
     else:
-        val = float(val.replace(u"\xa0", ""))
+        val = float(val.replace("\xa0", ""))
         return val, None
 
 class PrintLogger():
@@ -397,19 +377,19 @@ class PrintLogger():
     """
 
     def log(self, msg, *args, **kwargs):
-        print msg
+        print(msg)
 
     def debug(self, msg, *args, **kwargs):
-        print msg
+        print(msg)
 
     def info(self, msg, *args, **kwargs):
-        print msg
+        print(msg)
 
     def warning(self, msg, *args, **kwargs):
-        print msg
+        print(msg)
 
     def error(self, msg, *args, **kwargs):
-        print msg
+        print(msg)
 
     def critical(self, msg, *args, **kwargs):
-        print msg
+        print(msg)

@@ -13,16 +13,11 @@ class TestSocialstyrelsen(TestCase):
         self.assertTrue(len(self.scraper.items))
 
     def test_fetch_dimensions(self):
-        ds = self.scraper["ekonomisktbistandmanad"]
+        ds = self.scraper["if_ekb"]
         assert len(ds.dimensions) == 15
 
-    def test_get_hidden_inputs(self):
-        ds = self.scraper["ekonomisktbistandmanad"]
-        assert isinstance(ds.hidden_inputs, dict)
-        assert ds.hidden_inputs["senastAR"] == "2017"
-
     def test_fetch_allowed_values(self):
-        ds = self.scraper["ekonomisktbistandmanad"]
+        ds = self.scraper["if_ekb_manad"]
         assert len(ds.dimensions["MATT"].allowed_values) == 5
 
         for dim in ds.dimensions:
@@ -33,7 +28,7 @@ class TestSocialstyrelsen(TestCase):
 
 
     def test_basic_query(self):
-        ds = self.scraper["ekonomisktbistandmanad"]
+        ds = self.scraper["if_ekb"]
         res = ds.fetch({
             "TABELL": "1",
             "OMR": ["01", "03"],
@@ -57,7 +52,7 @@ class TestSocialstyrelsen(TestCase):
     def test_query_utrikes_hushall(self):
         """This query requires us to rename dimensions in payload
         """
-        dataset = self.scraper["ekonomisktbistandmanad"]
+        dataset = self.scraper["if_ekb"]
         query = {
             "TABELL": "1", # "Biståndshushåll"
             "MATT": [
@@ -73,7 +68,7 @@ class TestSocialstyrelsen(TestCase):
 
 
     def test_bad_queries(self):
-        ds = self.scraper["ekonomisktbistandmanad"]
+        ds = self.scraper["if_ekb"]
 
         # Get non-existing dimension
         with pytest.raises(InvalidQuery):
@@ -89,7 +84,7 @@ class TestSocialstyrelsen(TestCase):
 
 
     def test_large_query(self):
-        ds = self.scraper["ekonomisktbistandmanad"]
+        ds = self.scraper["if_ekb"]
 
         with pytest.raises(TooLargeQuery):
             ds.fetch({
