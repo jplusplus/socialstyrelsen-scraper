@@ -3,7 +3,7 @@ import requests
 from copy import deepcopy
 from bs4 import BeautifulSoup
 import re
-from statscraper import (BaseScraper, Collection, DimensionValue,
+from statscraper import (BaseScraper, DimensionValue,
                          Dataset, Dimension, Result)
 from statscraper.exceptions import NoSuchItem
 from socialstyrelsen.exceptions import InvalidQuery, TooLargeQuery
@@ -49,7 +49,7 @@ class SocialstyrelsenScraper(BaseScraper):
                 label = option_tag.text.strip()
                 dim_value = SocialstyrelsenDimensionValue(value, dimension, label)
                 yield dim_value
-        
+
         else:
             # This is the hvOMR (region) dimension
             for a_tag in soup.select("a[href*=cc]"):
@@ -61,12 +61,7 @@ class SocialstyrelsenScraper(BaseScraper):
                 dim_value = SocialstyrelsenDimensionValue(value, dimension, label)
                 yield dim_value
 
-
-
     def _fetch_data(self, dataset, query):
-        """
-
-        """
         url = dataset.url.replace("val", "resultat")
 
         # Start building the POST payload from values of hidden inputs
@@ -79,8 +74,10 @@ class SocialstyrelsenScraper(BaseScraper):
                 dim = dataset.dimensions[dim_key]
             except NoSuchItem:
                 dim_ids = [x.id for x in dataset.dimensions]
-                msg = "{} is not a valid dimension id. Try: ".format(dim_key,
-                                                                     dim_ids)
+                msg = "{} is not a valid dimension id. Try: {}".format(
+                    dim_key,
+                    dim_ids,
+                )
                 raise InvalidQuery(msg)
 
             if values == "*":
@@ -106,6 +103,10 @@ class SocialstyrelsenScraper(BaseScraper):
             query_value = "".join(query_values)  # ";01;;02;;03;"
 
             payload[dim.query_key] = query_value
+            # We will get a server error of screen size is not set
+            # Actual values seem not to matter
+            payload['clientScreenWidth'] = "950"
+            payload['clientScreenHeight'] = "709"
 
         # Socialstyrelsen has a limit of 50 000 datapoints per query
         # TODO: Split into multiple queries automatically
@@ -115,11 +116,10 @@ class SocialstyrelsenScraper(BaseScraper):
                    "Try splitting it into multiple queries.")\
                    .format(query_size, MAX_QUERY_SIZE)
             raise TooLargeQuery(msg)
-
         html = self._post_html(url, payload)
 
         # Check if the result is an error page
-        error_msg = re.search("Fel med nummer (-?\d+)", html)
+        error_msg = re.search(r"Fel med nummer (-?\d+)", html)
         if error_msg:
             # TODO: Find out what these error codes mean.
             # Known codes are -1  and 10.
@@ -151,7 +151,6 @@ class SocialstyrelsenScraper(BaseScraper):
 
         return r.text
 
-
     @property
     def log(self):
         if not hasattr(self, "_logger"):
@@ -160,9 +159,6 @@ class SocialstyrelsenScraper(BaseScraper):
 
 
 class SocialstyrelsenDataset(Dataset):
-    @property
-    def html(self):
-        pass
 
     @property
     def url(self):
@@ -323,7 +319,6 @@ def parse_result_table(html):
     # Final col_index_values will look something like this:
     # [(u'2017', u'Januari'), (u'2017', u'Februari'), (u'2017', u'Mars')]
     col_index_values = zip(*col_index_values)
-    assert len(col_index_values) == n_value_cols
 
     # Start parsing data
     for tr in value_rows:
@@ -340,12 +335,16 @@ def parse_result_table(html):
             # TODO: Handle status
 
             dims = deepcopy(row_dims)
-            col_dims = dict(zip(col_index, col_index_values[i]))
+
+            # Not sure about the original intention here?
+            # P2 code: col_dims = dict(zip(col_index, col_index_values[i]))
+            col_dims = dict(zip(col_index, [x for x in col_index_values][i]))
             dims.update(col_dims)
 
             data.append((value, dims))
 
     return data
+
 
 def parse_cell_value(val):
     """Parse value from table cell.
@@ -371,6 +370,7 @@ def parse_cell_value(val):
     else:
         val = float(val.replace("\xa0", ""))
         return val, None
+
 
 class PrintLogger():
     """ Empyt "fake" logger
