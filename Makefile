@@ -1,16 +1,8 @@
-
-.PHONY: clean-pyc clean-build
-
 install:
-	pip install -r requirements.txt
+	pip3 install -r requirements.txt
 
-clean-pyc:
-	find . -name '*.pyc' -exec rm {} +
-	find . -name '*.pyo' -exec rm {} +
-	find . -name '*~' -exec rm {} +
-
-tests: clean-pyc
+tests:
 	PYTHONPATH=. py.test tests --verbose
 
-test: clean-pyc
+test:
 	PYTHONPATH=. py.test $(file) --verbose
